@@ -12,6 +12,8 @@
 - 譜面ページに、選んでいる難易度の自分のプレイ回数を表示
 - タイトル・アーティストにマウスを合わせると、もう片方の言語の表記を表示
 
+今後のアップデートで、さらに機能を追加する予定です
+
 ## English
 
 Please do not report problems with this script to osu!
@@ -25,3 +27,5 @@ Install [Tampermonkey](https://www.tampermonkey.net/), then press the button abo
 - Search your friend list by name
 - Show your own play count for the selected difficulty on beatmap pages
 - Hover the title or artist to see the other language
+
+More features are planned for future updates

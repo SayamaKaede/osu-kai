@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         osu! Kai
 // @namespace    https://github.com/SayamaKaede
-// @version      0.0.1
+// @version      0.0.2
 // @description  フレンドページで相互・片思いの絞り込みと前回からの変化を表示し、譜面ページで自分のプレイ回数とタイトル・アーティストの別の表記を表示する。左下の「Kai」からオプションを開く
 // @author       SayamaKaede
 // @homepageURL  https://github.com/SayamaKaede/osu-kai
@@ -21,7 +21,7 @@
 
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 
-    const english = () => String(page.currentLocale ?? document.documentElement.lang).startsWith('en');
+    const japanese = () => String(page.currentLocale ?? document.documentElement.lang).startsWith('ja');
 
     const WORDS = {
         ja: {
@@ -92,7 +92,7 @@
         },
     };
 
-    const words = () => WORDS[english() ? 'en' : 'ja'];
+    const words = () => WORDS[japanese() ? 'ja' : 'en'];
 
     const hasGM = typeof GM_getValue === 'function';
 

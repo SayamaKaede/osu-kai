@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         osu! Kai
 // @namespace    https://github.com/SayamaKaede
-// @version      0.0.2
+// @version      0.0.3
 // @description  フレンドページで相互・片思いの絞り込みと前回からの変化を表示し、譜面ページで自分のプレイ回数とタイトル・アーティストの別の表記を表示する。左下の「Kai」からオプションを開く
 // @author       SayamaKaede
 // @homepageURL  https://github.com/SayamaKaede/osu-kai
@@ -54,6 +54,9 @@
             beatmapPage: '譜面ページ',
             playcountFeature: '自分のプレイ回数を表示',
             alternateFeature: 'タイトル・アーティストのもう片方の言語をマウスを合わせて表示',
+            searchPage: '譜面の検索',
+            searchFeature: '検索欄に項目のボタンを表示',
+            searchIn: '検索する項目',
             back: '戻る',
             close: '閉じる',
         },
@@ -87,6 +90,9 @@
             beatmapPage: 'Beatmap page',
             playcountFeature: 'Show Personal Plays',
             alternateFeature: 'Show title and artist in the other language on hover',
+            searchPage: 'Beatmap search',
+            searchFeature: 'Show field buttons in the search box',
+            searchIn: 'Search in',
             back: 'Back',
             close: 'Close',
         },
@@ -124,7 +130,7 @@
 
     const DATE_FORMATS = ['yyyy/mm/dd', 'mm/dd/yyyy', 'dd/mm/yyyy', 'yyyy-mm-dd'];
 
-    const DEFAULT_OPTIONS = { dateFormat: DATE_FORMATS[0], friends: true, playcount: true, alternate: true };
+    const DEFAULT_OPTIONS = { dateFormat: DATE_FORMATS[0], friends: true, playcount: true, alternate: true, search: true };
 
     function options() {
         return { ...DEFAULT_OPTIONS, ...store.get(KEY.options, {}) };
@@ -318,6 +324,21 @@
   background: hsl(var(--hsl-c1)); will-change: transform, width;
 }
 .kai-switch:focus-visible { outline: 2px solid hsl(var(--hsl-pink-1)); outline-offset: 2px; }
+.kai-scope__item {
+  display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 12px; border: 0; border-radius: 12px;
+  background: hsla(var(--hsl-c1), .06); color: hsl(var(--hsl-l2)); font: inherit; line-height: 1; cursor: pointer;
+  transition: background-color .15s ease-out, color .15s ease-out;
+}
+.kai-scope__item:hover { background: hsla(var(--hsl-c1), .12); color: hsl(var(--hsl-l1)); }
+.kai-scope__item .fas { font-size: 11px; color: inherit; opacity: .7; }
+.kai-scope__item:focus-visible { outline: 2px solid hsl(var(--hsl-pink-1)); outline-offset: 2px; }
+.kai-scope .beatmapsets-search-filter__header, .kai-scope__header { white-space: nowrap; }
+.kai-scope .beatmapsets-search-filter__items { gap: 8px; align-items: center; }
+.quick-search-input.kai-scope-host { flex-wrap: wrap; }
+.kai-scope--line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.kai-scope--line .kai-scope__header { color: hsl(var(--hsl-c1)); margin-right: 4px; }
+.kai-scope--quick { order: 1; flex-basis: 100%; margin-top: 12px; font-size: 14px; }
+.kai-scope--sticky { margin: 4px 0 8px; }
 `;
 
     function ensureStyle() {
@@ -752,6 +773,136 @@
         }
     }, true);
 
+    const SCOPE_KEYS = [['title', 'Title'], ['artist', 'Artist'], ['creator', 'Creator'], ['source', 'Source'], ['tag', 'Tag']];
+
+    const QUERY_KEYS = new Set([
+        'title', 'artist', 'creator', 'source', 'difficulty', 'tag', 'featured_artist',
+        'star', 'stars', 'dr', 'hp', 'key', 'keys', 'created', 'submitted', 'favourites',
+        'ar', 'cs', 'od', 'bpm', 'circles', 'sliders', 'length', 'status', 'ranked', 'updated', 'divisor',
+    ]);
+
+    const QUERY_TOKEN = /\b(\w+)(:|=|[<>][:=]?)(("{1,2})(?:\\"|.)*?\4|\S*)/gi;
+
+    function scopeQuery(query, key) {
+        const kept = [];
+
+        const free = query
+            .replace(QUERY_TOKEN, (token, name) => {
+                if (!QUERY_KEYS.has(name.toLowerCase())) return token;
+                kept.push(token);
+                return ' ';
+            })
+            .replace(/"/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (free) return [...kept, `${key}=""${free}""`].join(' ');
+
+        for (let index = kept.length - 1; index >= 0; index--) {
+            const scoped = kept[index].match(/^(\w+)[:=](""(?:\\"|.)*?"")$/);
+            const name = scoped?.[1].toLowerCase();
+
+            if (!scoped || !SCOPE_KEYS.some(([scope]) => scope === name)) continue;
+            if (name === key) return null;
+
+            kept[index] = `${key}=${scoped[2]}`;
+            return kept.join(' ');
+        }
+
+        return null;
+    }
+
+    function scopeRow(kind) {
+        const line = kind !== 'grid';
+        const row = document.createElement('div');
+        const header = document.createElement('span');
+        const items = document.createElement('div');
+
+        row.className = line ? `kai-scope kai-scope--line kai-scope--${kind}` : 'kai-scope beatmapsets-search-filter beatmapsets-search-filter--grid';
+        header.className = line ? 'kai-scope__header' : 'beatmapsets-search-filter__header';
+        header.textContent = words().searchIn;
+        items.className = 'beatmapsets-search-filter__items';
+
+        for (const [key, label] of SCOPE_KEYS) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'kai-scope__item';
+            button.dataset.kaiScope = key;
+            button.append(label, Object.assign(document.createElement('span'), { className: 'fas fa-level-up-alt' }));
+            items.append(button);
+        }
+
+        if (line) row.append(header, ...items.children);
+        else row.append(header, items);
+
+        return row;
+    }
+
+    function placeScopes() {
+        if (!options().search) return;
+
+        const grid = document.querySelector('.beatmapsets-search__filter-grid');
+
+        if (grid && !grid.querySelector(':scope > .kai-scope')) {
+            ensureStyle();
+            grid.prepend(scopeRow('grid'));
+        }
+
+        for (const sticky of document.querySelectorAll('.beatmapsets-search--sticky')) {
+            if (sticky.querySelector(':scope > .kai-scope')) continue;
+            ensureStyle();
+            sticky.append(scopeRow('sticky'));
+        }
+
+        for (const host of document.querySelectorAll('.quick-search-input')) {
+            if (host.querySelector(':scope > .kai-scope')) continue;
+            ensureStyle();
+            host.classList.add('kai-scope-host');
+            host.append(scopeRow('quick'));
+        }
+    }
+
+    function removeScopes() {
+        for (const row of document.querySelectorAll('.kai-scope')) row.remove();
+        for (const host of document.querySelectorAll('.kai-scope-host')) host.classList.remove('kai-scope-host');
+    }
+
+    let scopeQueued = false;
+
+    new MutationObserver(() => {
+        if (scopeQueued) return;
+        scopeQueued = true;
+        requestAnimationFrame(() => {
+            scopeQueued = false;
+            placeScopes();
+        });
+    }).observe(document.documentElement, { childList: true, subtree: true });
+
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest?.('[data-kai-scope]');
+
+        if (!button) return;
+
+        event.preventDefault();
+
+        const input = button
+            .closest('.beatmapsets-search, .quick-search-input')
+            ?.querySelector('.js-beatmapsets-search-input, .quick-search-input__input');
+
+        if (!input) throw new Trouble(words().missing('.js-beatmapsets-search-input / .quick-search-input__input'));
+
+        const next = scopeQuery(input.value, button.dataset.kaiScope);
+
+        if (next == null) {
+            input.focus();
+            return;
+        }
+
+        Object.getOwnPropertyDescriptor(page.HTMLInputElement.prototype, 'value').set.call(input, next);
+        input.dispatchEvent(new page.Event('input', { bubbles: true }));
+        input.focus();
+    });
+
     // Switch motion based on "Toggle switch" from designbookmark.com
     function springSwitch(on, label, onChange) {
         const TRAVEL = 14;
@@ -915,6 +1066,8 @@
             box(toggle('friends', w.friendsFeature), dateRow),
             section(w.beatmapPage),
             box(toggle('playcount', w.playcountFeature), toggle('alternate', w.alternateFeature)),
+            section(w.searchPage),
+            box(toggle('search', w.searchFeature)),
         );
 
         const datePage = () => {
@@ -1170,6 +1323,11 @@
     function applyFeature(key, on) {
         if (key === 'friends' && !on) stopFriends();
         if (key === 'playcount' && !on) stopPlaycount();
+        if (key === 'search') {
+            if (on) placeScopes();
+            else removeScopes();
+            return;
+        }
         if (on) boot();
     }
 
@@ -1198,6 +1356,7 @@
     document.addEventListener('turbo:before-cache', () => {
         stopFriends();
         stopPlaycount();
+        removeScopes();
         document.querySelector('.kai-options-button')?.remove();
         closeOptions?.();
     });
